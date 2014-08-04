@@ -1,4 +1,5 @@
 //author: adejoux@fr.ibm.com
+// description: basic test of HMC REST api. Authenticate and get logical partition informations
 
 package main
 
@@ -35,7 +36,9 @@ func NewSession(user string, password string, url string) *Session {
   return &Session{ client : &http.Client{Transport: tr, Jar: jar}, User: user, Password: password, url: url }
 }
 
-
+//
+// XML parsing structures
+//
 
 type Feed struct {
   XMLName   xml.Name   `xml:"feed"`
@@ -56,7 +59,8 @@ type LogicalPartition struct {
   PartitionName string
   PartitionID int
   PartitionUUID string
-  AllowPerformanceDataCollection string
+  LogicalSerialNumber string
+  OperatingSystemVersion string
 }
 
 func main() {
@@ -78,6 +82,7 @@ func (s *Session) doLogon() {
 
   authurl := s.url + "/rest/api/web/Logon"
 
+  // template for login request
   logintemplate := `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
   <LogonRequest xmlns="http://www.ibm.com/xmlns/systems/power/firmware/web/mc/2012_10/" schemaVersion="V1_1_0">
     <Metadata>
@@ -94,8 +99,6 @@ func (s *Session) doLogon() {
   if err != nil {
     log.Fatal(err)
   }
-
-  // strings.NewReader()
 
   request, err := http.NewRequest("PUT", authurl, authrequest)
 
@@ -121,8 +124,6 @@ func (s *Session) getManaged() {
 
   request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 
-  //fmt.Println(s.client.Jar.Cookies(request.URL))
-
   response, err := s.client.Do(request)
   if err != nil {
     log.Fatal(err)
@@ -132,26 +133,23 @@ func (s *Session) getManaged() {
     if err != nil {
       log.Fatal(err)
     }
-    fmt.Println("The calculated length is:", len(string(contents)), "for the url:", mgdurl)
-    fmt.Println("   ", response.StatusCode)
-    hdr := response.Header
-    for key, value := range hdr {
-      fmt.Println("   ", key, ":", value)
-    }
 
-    //fmt.Println(string(contents))
+    if response.StatusCode != 200 {
+      log.Fatalf("Error getting LPAR informations. status code: %d", response.StatusCode)
+    }
 
     var feed Feed
     new_err := xml.Unmarshal(contents, &feed)
 
     if new_err != nil {
-      fmt.Println(new_err)
+      log.Fatal(new_err)
     }
 
+    fmt.Printf("\t%-10s\t%-40s\t%-8s\t%-25s\n", "partition", "UUID", "LSERIAL", "OS" )
     for _, entry := range feed.Entries {
       for _, content := range entry.Contents {
         for _, lpar := range content.Lpar {
-          fmt.Printf("\t%s\t%s\t%s\n", lpar.PartitionName, lpar.PartitionUUID, lpar.AllowPerformanceDataCollection)
+          fmt.Printf("\t%-10s\t%-40s\t%-8s\t%-25s\n", lpar.PartitionName, lpar.PartitionUUID, lpar.LogicalSerialNumber, lpar.OperatingSystemVersion)
         }
       }
     }
