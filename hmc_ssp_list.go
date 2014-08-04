@@ -1,5 +1,5 @@
 //author: adejoux@fr.ibm.com
-// description: basic test of HMC REST api. Authenticate and get logical partition informations
+// description: list Shared Storage Pool known by HMC
 
 package main
 
@@ -15,6 +15,36 @@ import (
   "bytes"
   "encoding/xml"
 )
+
+//
+// XML parsing structures
+//
+
+type Feed struct {
+  XMLName   xml.Name   `xml:"feed"`
+  Entries []Entry `xml:"entry"`
+}
+type Entry struct {
+  XMLName   xml.Name   `xml:"entry"`
+  Contents []Content `xml:"content"`
+}
+
+type Content struct {
+  XMLName xml.Name `xml:"content"`
+  SharedStoragePools []SharedStoragePool `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ SharedStoragePool"`
+}
+
+type SharedStoragePool struct {
+  XMLName xml.Name `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ SharedStoragePool"`
+  Name string `xml:"StoragePoolName"`
+  UUID string `xml:"UniqueDeviceID"`
+  Capacity float64
+  FreeSpace float64
+}
+
+//
+// HTTP session struct
+//
 
 type Session struct {
   client *http.Client
@@ -34,48 +64,6 @@ func NewSession(user string, password string, url string) *Session {
   }
 
   return &Session{ client : &http.Client{Transport: tr, Jar: jar}, User: user, Password: password, url: url }
-}
-
-//
-// XML parsing structures
-//
-
-type Feed struct {
-  XMLName   xml.Name   `xml:"feed"`
-  Entries []Entry `xml:"entry"`
-}
-type Entry struct {
-  XMLName   xml.Name   `xml:"entry"`
-  Contents []Content `xml:"content"`
-}
-
-type Content struct {
-  XMLName xml.Name `xml:"content"`
-  Lpar []LogicalPartition `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ LogicalPartition"`
-}
-
-type LogicalPartition struct {
-  XMLName xml.Name `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ LogicalPartition"`
-  PartitionName string
-  PartitionID int
-  PartitionUUID string
-  LogicalSerialNumber string
-  OperatingSystemVersion string
-}
-
-func main() {
-
-  user := flag.String("user","hscroot", "hmc user")
-  password :=  flag.String("password","abc123", "hmc user password")
-  url :=  flag.String("url","https://myhmc:12443", "hmc REST api url")
-
-  flag.Parse()
-
-  //initialize new http session
-  session := NewSession(*user, *password, *url)
-
-  session.doLogon()
-  session.getManaged()
 }
 
 func (s *Session) doLogon() {
@@ -118,9 +106,11 @@ func (s *Session) doLogon() {
   }
 }
 
-func (s *Session) getManaged() {
-  mgdurl := s.url + "/rest/api/uom/LogicalPartition"
-  request, err := http.NewRequest("GET", mgdurl, nil)
+func (s *Session) getSSP() {
+
+  sspurl := s.url + "/rest/api/uom/SharedStoragePool"
+
+  request, err := http.NewRequest("GET", sspurl, nil)
 
   request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 
@@ -145,13 +135,35 @@ func (s *Session) getManaged() {
       log.Fatal(new_err)
     }
 
-    fmt.Printf("\t%-10s\t%-40s\t%-8s\t%-25s\n", "partition", "UUID", "LSERIAL", "OS" )
+    fmt.Printf("\t%-10s\t%-68s\t%-8s\t%-25s\n", "name", "UUID", "Capacity", "FreeSpace" )
     for _, entry := range feed.Entries {
       for _, content := range entry.Contents {
-        for _, lpar := range content.Lpar {
-          fmt.Printf("\t%-10s\t%-40s\t%-8s\t%-25s\n", lpar.PartitionName, lpar.PartitionUUID, lpar.LogicalSerialNumber, lpar.OperatingSystemVersion)
+        for _, ssp := range content.SharedStoragePools {
+          fmt.Printf("\t%-10s\t%-68s\t%-8f\t%-8f\n", ssp.Name, ssp.UUID, ssp.Capacity, ssp.FreeSpace)
+          ssps = append(ssps, ssp.UUID)
         }
       }
     }
   }
 }
+
+//
+// MAIN
+//
+
+func main() {
+
+  user := flag.String("user","hscroot", "hmc user")
+  password :=  flag.String("password","abc123", "hmc user password")
+  url :=  flag.String("url","https://myhmc:12443", "hmc REST api url")
+
+  flag.Parse()
+
+  //initialize new http session
+  session := NewSession(*user, *password, *url)
+
+  session.doLogon()
+  session.getSSP()
+
+}
+
