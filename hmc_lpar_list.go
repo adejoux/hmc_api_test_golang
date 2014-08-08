@@ -1,5 +1,5 @@
 //author: adejoux@fr.ibm.com
-// description: list Shared Storage Pool known by HMC
+// description: basic test of HMC REST api. Authenticate and get logical partition informations
 
 package main
 
@@ -30,16 +30,17 @@ type Entry struct {
 }
 
 type Content struct {
-	XMLName            xml.Name            `xml:"content"`
-	SharedStoragePools []SharedStoragePool `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ SharedStoragePool"`
+	XMLName xml.Name           `xml:"content"`
+	Lpar    []LogicalPartition `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ LogicalPartition"`
 }
 
-type SharedStoragePool struct {
-	XMLName   xml.Name `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ SharedStoragePool"`
-	Name      string   `xml:"StoragePoolName"`
-	UUID      string   `xml:"UniqueDeviceID"`
-	Capacity  float64
-	FreeSpace float64
+type LogicalPartition struct {
+	XMLName                xml.Name `xml:"http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/ LogicalPartition"`
+	PartitionName          string
+	PartitionID            int
+	PartitionUUID          string
+	LogicalSerialNumber    string
+	OperatingSystemVersion string
 }
 
 //
@@ -106,11 +107,9 @@ func (s *Session) doLogon() {
 	}
 }
 
-func (s *Session) getSSP() {
-
-	sspurl := s.url + "/rest/api/uom/SharedStoragePool"
-
-	request, err := http.NewRequest("GET", sspurl, nil)
+func (s *Session) getManaged() {
+	mgdurl := s.url + "/rest/api/uom/LogicalPartition"
+	request, err := http.NewRequest("GET", mgdurl, nil)
 
 	request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
 
@@ -135,12 +134,11 @@ func (s *Session) getSSP() {
 			log.Fatal(new_err)
 		}
 
-		fmt.Printf("\t%-10s\t%-68s\t%-8s\t%-25s\n", "name", "UUID", "Capacity", "FreeSpace")
+		fmt.Printf("\t%-10s\t%-40s\t%-8s\t%-25s\n", "partition", "UUID", "LSERIAL", "OS")
 		for _, entry := range feed.Entries {
 			for _, content := range entry.Contents {
-				for _, ssp := range content.SharedStoragePools {
-					fmt.Printf("\t%-10s\t%-68s\t%-8f\t%-8f\n", ssp.Name, ssp.UUID, ssp.Capacity, ssp.FreeSpace)
-					ssps = append(ssps, ssp.UUID)
+				for _, lpar := range content.Lpar {
+					fmt.Printf("\t%-10s\t%-40s\t%-8s\t%-25s\n", lpar.PartitionName, lpar.PartitionUUID, lpar.LogicalSerialNumber, lpar.OperatingSystemVersion)
 				}
 			}
 		}
@@ -163,6 +161,5 @@ func main() {
 	session := NewSession(*user, *password, *url)
 
 	session.doLogon()
-	session.getSSP()
-
+	session.getManaged()
 }
